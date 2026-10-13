@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --free: #1E5A44;
+    --busy: #7A1F2B;
+    --soon: #94600F;
+    --idle: #3B4250;
+    --ink: #F5F3EE;
+    --ink-soft: rgba(245, 243, 238, 0.74);
+    --panel: #151C27;
+    --rule: #273142;
+    --label: #8C97AA;
+    --block: #2C3A50;
+    --gold: #D9AE3A;
+    --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--panel);
+    color: var(--ink);
+    font-family: var(--font);
+    overflow: hidden;
+    cursor: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .screen {
+    display: grid;
+    grid-template-columns: 64fr 36fr;
+    height: 100vh;
+  }
+
+  .screen[data-state="free"] { --status: var(--free); }
+  .screen[data-state="busy"] { --status: var(--busy); }
+  .screen[data-state="soon"] { --status: var(--soon); }
+  .screen[data-state="idle"] { --status: var(--idle); }
+
+  /* ---------- Status side ---------- */
+
+  .status {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 5vh 4vw 4.5vh;
+    background-color: var(--status, var(--idle));
+    transition: background-color 1.2s ease;
+  }
+
+  .status-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 2vw;
+  }
+
+  .room-name {
+    font-size: 2.6vw;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+  }
+
+  .clock {
+    font-size: 2.6vw;
+    font-weight: 400;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .stale {
+    margin-top: 2vh;
+    align-self: flex-start;
+    font-size: 1.3vw;
+    padding: 0.8vh 1vw;
+    background: rgba(0, 0, 0, 0.28);
+    border-radius: 0.3vw;
+  }
+
+  .status-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .state-word {
+    font-size: 9.6vw;
+    font-weight: 800;
+    font-stretch: 72%;
+    line-height: 0.88;
+    letter-spacing: -0.012em;
+    margin-bottom: 4.5vh;
+  }
+
+  .state-word.long { font-size: 7vw; }
+
+  .title {
+    font-size: 3.8vw;
+    font-weight: 600;
+    line-height: 1.12;
+    max-width: 52vw;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .title.message {
+    font-size: 2.4vw;
+    font-weight: 400;
+    line-height: 1.35;
+    -webkit-line-clamp: 4;
+  }
+
+  .who, .when {
+    font-size: 2.1vw;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .who { margin-top: 2vh; color: var(--ink-soft); }
+  .when { margin-top: 0.6vh; }
+
+  .drain {
+    height: 0.9vh;
+    margin-top: 4.5vh;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 1vh;
+    overflow: hidden;
+  }
+
+  .drain-fill {
+    height: 100%;
+    background: var(--ink);
+    transition: width 1s linear;
+  }
+
+  .next {
+    display: grid;
+    grid-template-columns: 7vw 1fr;
+    align-items: baseline;
+    margin-top: 4vh;
+    padding-top: 2.6vh;
+    border-top: 1px solid rgba(255, 255, 255, 0.24);
+    font-size: 1.9vw;
+    line-height: 1.3;
+  }
+
+  .next-label { color: var(--ink-soft); }
+  .next-what { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .next-who { grid-column: 2; color: var(--ink-soft); font-size: 1.6vw; }
+
+  /* ---------- Day timeline side ---------- */
+
+  .day {
+    display: flex;
+    flex-direction: column;
+    padding: 5vh 2.8vw 4.5vh 2.4vw;
+    min-height: 0;
+  }
+
+  .day-date {
+    font-size: 1.9vw;
+    font-weight: 600;
+    margin-bottom: 3.4vh;
+  }
+
+  .allday {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8vh;
+    margin-bottom: 2.4vh;
+  }
+
+  .allday-item {
+    display: flex;
+    gap: 1vw;
+    font-size: 1.2vw;
+    padding: 0.8vh 0.9vw;
+    background: var(--block);
+    border-radius: 0.35vw;
+  }
+
+  .allday-item .t { color: var(--label); }
+
+  .axis {
+    position: relative;
+    flex: 1;
+    margin: 1vh 0 1vh 5vw;
+  }
+
+  .hour {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .hour span {
+    position: absolute;
+    right: calc(100% + 0.9vw);
+    transform: translateY(-50%);
+    font-size: 1.05vw;
+    color: var(--label);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .block {
+    position: absolute;
+    left: 0.6vw;
+    right: 0;
+    min-height: 2.6vh;
+    display: flex;
+    align-items: baseline;
+    gap: 0.8vw;
+    padding: 0.55vh 0.8vw;
+    overflow: hidden;
+    background: var(--block);
+    border-radius: 0.35vw;
+    font-size: 1.15vw;
+    line-height: 1.25;
+  }
+
+  .block .t {
+    color: var(--label);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .block .n {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .block .o { color: var(--label); font-weight: 400; margin-left: 0.5vw; }
+
+  .block.past { opacity: 0.38; }
+  .block.current { background: var(--status); }
+  .block.current .t, .block.current .o { color: var(--ink-soft); }
+
+  .now {
+    position: absolute;
+    left: -0.4vw;
+    right: 0;
+    border-top: 0.3vh solid var(--gold);
+    z-index: 2;
+  }
+
+  .now::before {
+    content: "";
+    position: absolute;
+    left: -0.5vw;
+    top: calc(-0.5vw - 0.15vh);
+    width: 1vw;
+    height: 1vw;
+    border-radius: 50%;
+    background: var(--gold);
+  }
+
+  .empty-day {
+    font-size: 1.4vw;
+    color: var(--label);
+    margin-top: 1vh;
+  }
+
+  /* ---------- Setup screen (no room chosen) ---------- */
+
+  .setup {
+    padding: 8vh 6vw;
+    max-width: 70vw;
+  }
+
+  .setup h1 { font-size: 3.4vw; font-weight: 700; margin-bottom: 2vh; }
+  .setup p { font-size: 1.6vw; line-height: 1.5; color: var(--ink-soft); margin-bottom: 4vh; }
+  .setup ul { list-style: none; display: flex; flex-direction: column; gap: 1.6vh; }
+
+  .setup a {
+    display: block;
+    font-size: 2.2vw;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 1.8vh 1.6vw;
+    background: var(--block);
+    border-radius: 0.4vw;
+  }
+
+  .setup a:focus-visible, .setup a:hover {
+    outline: 0.3vw solid var(--gold);
+    outline-offset: 0.2vw;
+  }
+
+  .setup .hint { font-size: 1.3vw; color: var(--label); margin-top: 0.4vh; }
+
+  [hidden] { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status, .drain-fill { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="screen" id="screen" data-state="idle">
+  <section class="status" aria-live="polite">
+    <header class="status-top">
+      <h1 class="room-name" id="roomName"></h1>
+      <div class="clock" id="clock"></div>
+    </header>
+    <p class="stale" id="stale" hidden></p>
+
+    <div class="status-body">
+      <p class="state-word" id="stateWord">Connecting</p>
+      <h2 class="title" id="title"></h2>
+      <p class="who" id="who" hidden></p>
+      <p class="when" id="when" hidden></p>
+      <div class="drain" id="drain" hidden><div class="drain-fill" id="drainFill"></div></div>
+    </div>
+
+    <footer class="next" id="next" hidden>
+      <span class="next-label">Next</span>
+      <span class="next-what" id="nextWhat"></span>
+      <span class="next-who" id="nextWho"></span>
+    </footer>
+  </section>
+
+  <aside class="day">
+    <h2 class="day-date" id="dayDate"></h2>
+    <div class="allday" id="allday"></div>
+    <div class="axis" id="axis"></div>
+  </aside>
+</main>
+
+<section class="setup" id="setup" hidden>
+  <h1>Choose the room for this screen</h1>
+  <p id="setupText">Loading rooms…</p>
+  <ul id="setupList"></ul>
+</section>
+
+<script>
+/* ======================================================================
+   Configuration
+   Paste the Apps Script web app URL (ends in /exec) below, or pass it in
+   the page address as ?api=...  Each TV's address then only needs:
+     room-display.html?room=conf-room-1&key=YOUR_ACCESS_KEY
+   Preview without a backend:  ?demo=1   ?demo=soon   ?demo=free
+   ====================================================================== */
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyjxuPqFZXEzbFgBaOP_qOV9BjLSTwnDZQagecvlsAv9b0LYAO7jUd4uV05WPw_N7Dbsg/exec';
+
+const REFRESH_MS = 60 * 1000;   // fetch the schedule every minute
+const TICK_MS = 10 * 1000;      // recompute status and clock every 10 seconds
+const SOON_MINUTES = 10;        // "Starting soon" window
+const STALE_MINUTES = 5;        // warn when data is older than this
+const DAY_START_HOUR = 8;       // timeline always shows at least 8 AM ...
+const DAY_END_HOUR = 18;        // ... to 6 PM
+
+const params = new URLSearchParams(location.search);
+const API_URL = params.get('api') || DEFAULT_API_URL;
+const ROOM_ID = params.get('room');
+const KEY = params.get('key') || '';
+const DEMO = params.get('demo');
+
+const state = { room: null, tz: 'America/Chicago', events: [], lastOk: 0, error: null };
+let loadedDay = null;
+let demoBuilt = false;
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------- Time helpers (always in the office time zone) ---------- */
+
+function fmt(date, opts) {
+  return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: state.tz }, opts)).format(date);
+}
+const fmtTime = (d) => fmt(d, { hour: 'numeric', minute: '2-digit' });
+const dayKey = (d) => fmt(d, { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+function minutesOfDay(d) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: state.tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(d);
+  const get = (t) => Number(parts.find((p) => p.type === t).value);
+  return get('hour') * 60 + get('minute');
+}
+
+function duration(ms) {
+  const total = Math.max(1, Math.round(ms / 60000));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+function hourLabel(h) {
+  const hr = h % 12 || 12;
+  return `${hr} ${h % 24 < 12 ? 'AM' : 'PM'}`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ---------- Data loading ---------- */
+
+function parseEvents(list) {
+  return (list || [])
+    .map((e) => Object.assign({}, e, {
+      start: e.allDay ? null : new Date(e.start),
+      end: e.allDay ? null : new Date(e.end),
+    }))
+    .sort((a, b) => (a.allDay === b.allDay ? (a.start || 0) - (b.start || 0) : a.allDay ? -1 : 1));
+}
+
+async function load() {
+  if (DEMO) {
+    if (!demoBuilt) { applyData(demoData()); demoBuilt = true; }
+    state.lastOk = Date.now();
+    render();
+    return;
+  }
+  if (!API_URL) {
+    state.error = { code: 'no_api' };
+    render();
+    return;
+  }
+  try {
+    const url = `${API_URL}?room=${encodeURIComponent(ROOM_ID)}&key=${encodeURIComponent(KEY)}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const data = await res.json();
+    if (data.error) {
+      state.error = { code: data.error, detail: data.detail, rooms: data.rooms };
+    } else {
+      applyData(data);
+      state.lastOk = Date.now();
+      state.error = null;
+    }
+  } catch (err) {
+    state.error = { code: 'network', detail: err.message };
+  }
+  render();
+}
+
+function applyData(data) {
+  state.room = data.room;
+  state.tz = data.timezone || state.tz;
+  state.events = parseEvents(data.events);
+  if (!loadedDay) loadedDay = dayKey(new Date());
+}
+
+/* ---------- Status logic ---------- */
+
+function computeStatus(now) {
+  const timed = state.events.filter((e) => !e.allDay);
+  const allDay = state.events.filter((e) => e.allDay);
+  const after = (t) => timed.find((e) => e.start >= t);
+
+  const current = timed.find((e) => e.start <= now && now < e.end);
+  if (current) return { kind: 'busy', event: current, next: after(current.end) };
+  if (allDay.length) return { kind: 'busy', event: allDay[0], next: timed.find((e) => e.start > now) };
+
+  const next = timed.find((e) => e.start > now);
+  if (next && next.start - now <= SOON_MINUTES * 60000) {
+    return { kind: 'soon', event: next, next: after(next.end) };
+  }
+  return { kind: 'free', event: null, next };
+}
+
+/* ---------- Rendering ---------- */
+
+function setText(id, text) {
+  const el = $(id);
+  el.textContent = text || '';
+  el.hidden = !text;
+}
+
+function render() {
+  const now = new Date();
+
+  // New day: reload so the page starts fresh with today's schedule.
+  if (loadedDay && dayKey(now) !== loadedDay) { location.reload(); return; }
+
+  $('clock').textContent = fmtTime(now);
+  $('roomName').textContent = (state.room && state.room.name) || ROOM_ID || '';
+  $('dayDate').textContent = fmt(now, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  if (!state.lastOk) {
+    renderUnavailable();
+    renderDay(now);
+    return;
+  }
+
+  renderStale(now);
+  const s = computeStatus(now);
+  const ev = s.event;
+  $('screen').dataset.state = s.kind;
+  $('title').classList.remove('message');
+  $('stateWord').classList.remove('long');
+  $('drain').hidden = true;
+
+  if (s.kind === 'busy') {
+    $('stateWord').textContent = 'In use';
+    setText('title', ev.title);
+    setText('who', ev.organizer);
+    if (ev.allDay) {
+      setText('when', 'All day');
+    } else {
+      setText('when', `Until ${fmtTime(ev.end)}, ${duration(ev.end - now)} left`);
+      const remaining = (ev.end - now) / (ev.end - ev.start);
+      $('drainFill').style.width = `${Math.max(0, Math.min(1, remaining)) * 100}%`;
+      $('drain').hidden = false;
+    }
+  } else if (s.kind === 'soon') {
+    $('stateWord').textContent = 'Starting soon';
+    $('stateWord').classList.add('long');
+    setText('title', ev.title);
+    setText('who', ev.organizer);
+    setText('when', `Starts at ${fmtTime(ev.start)}, in ${duration(ev.start - now)}`);
+  } else {
+    $('stateWord').textContent = 'Available';
+    setText('title', s.next ? `Free until ${fmtTime(s.next.start)}` : 'Free for the rest of the day');
+    setText('who', '');
+    setText('when', '');
+  }
+
+  // Footer: the booking after the current/upcoming one.
+  const n = s.next;
+  if (n) {
+    $('next').hidden = false;
+    $('nextWhat').textContent = `${fmtTime(n.start)}   ${n.title}`;
+    $('nextWho').textContent = n.organizer || '';
+  } else if (s.kind !== 'free') {
+    $('next').hidden = false;
+    $('nextWhat').textContent = 'Nothing else booked today';
+    $('nextWho').textContent = '';
+  } else {
+    $('next').hidden = true;
+  }
+
+  renderDay(now);
+}
+
+function renderUnavailable() {
+  const e = state.error;
+  $('screen').dataset.state = 'idle';
+  $('drain').hidden = true;
+  $('next').hidden = true;
+  $('stale').hidden = true;
+  setText('who', '');
+  setText('when', '');
+
+  if (!e) {
+    $('stateWord').textContent = 'Connecting';
+    setText('title', '');
+    return;
+  }
+
+  $('stateWord').textContent = 'No schedule';
+  $('stateWord').classList.add('long');
+  $('title').classList.add('message');
+
+  const messages = {
+    no_api: 'This screen isn’t connected to the schedule service yet. Add the Apps Script web app URL to DEFAULT_API_URL in this page, or add api= to the address.',
+    unauthorized: 'The access key in this screen’s address doesn’t match the schedule service. Check the key= value.',
+    unknown_room: `“${ROOM_ID}” isn’t a configured room. Use one of: ${(e.rooms || []).map((r) => r.id).join(', ')}.`,
+    calendar_error: `Google Calendar returned an error: ${e.detail || 'unknown'}. Run testAllRooms in the Apps Script editor to see details.`,
+    network: 'Can’t reach the schedule service. Check this screen’s network connection. Retrying every minute.',
+  };
+  setText('title', messages[e.code] || `Unexpected response: ${e.code}`);
+}
+
+function renderStale(now) {
+  const old = now - state.lastOk > STALE_MINUTES * 60000;
+  if (state.error && (old || state.error.code !== 'network')) {
+    setText('stale', `Schedule last updated at ${fmtTime(new Date(state.lastOk))}. Check this screen’s network connection.`);
+  } else {
+    setText('stale', '');
+  }
+}
+
+function renderDay(now) {
+  const today = dayKey(now);
+  const timed = state.events.filter((e) => !e.allDay);
+  const allDay = state.events.filter((e) => e.allDay);
+
+  $('allday').innerHTML = allDay.map((e) =>
+    `<div class="allday-item"><span class="t">All day</span><span>${escapeHtml(e.title)}${e.organizer ? ` <span class="t">${escapeHtml(e.organizer)}</span>` : ''}</span></div>`
+  ).join('');
+
+  const span = (e) => [
+    dayKey(e.start) !== today ? 0 : minutesOfDay(e.start),
+    dayKey(e.end) !== today ? 1440 : minutesOfDay(e.end),
+  ];
+
+  let startMin = DAY_START_HOUR * 60;
+  let endMin = DAY_END_HOUR * 60;
+  timed.forEach((e) => {
+    const [s, en] = span(e);
+    startMin = Math.min(startMin, Math.floor(s / 60) * 60);
+    endMin = Math.max(endMin, Math.ceil(en / 60) * 60);
+  });
+  const total = endMin - startMin;
+  const pct = (m) => ((m - startMin) / total) * 100;
+
+  let html = '';
+  for (let m = startMin; m <= endMin; m += 60) {
+    html += `<div class="hour" style="top:${pct(m)}%"><span>${hourLabel(m / 60)}</span></div>`;
+  }
+
+  timed.forEach((e) => {
+    const [s, en] = span(e);
+    const cls = e.end <= now ? 'past' : (e.start <= now && now < e.end ? 'current' : '');
+    html += `<div class="block ${cls}" style="top:${pct(s)}%;height:${pct(en) - pct(s)}%">` +
+      `<span class="t">${fmtTime(e.start)}</span>` +
+      `<span class="n">${escapeHtml(e.title)}${e.organizer ? `<span class="o">${escapeHtml(e.organizer)}</span>` : ''}</span>` +
+      `</div>`;
+  });
+
+  const nowMin = minutesOfDay(now);
+  if (nowMin >= startMin && nowMin <= endMin) {
+    html += `<div class="now" style="top:${pct(nowMin)}%"></div>`;
+  }
+
+  if (state.lastOk && !timed.length && !allDay.length) {
+    html += `<p class="empty-day">No bookings today.</p>`;
+  }
+
+  $('axis').innerHTML = html;
+}
+
+/* ---------- Setup screen (no ?room= in the address) ---------- */
+
+async function showSetup() {
+  $('screen').hidden = true;
+  $('setup').hidden = false;
+  document.body.style.cursor = 'auto';
+
+  if (!API_URL) {
+    $('setupText').textContent = 'Add the Apps Script web app URL to DEFAULT_API_URL in this page, or add api= to the address, then reload.';
+    return;
+  }
+  try {
+    const res = await fetch(`${API_URL}?list=1&key=${encodeURIComponent(KEY)}`, { cache: 'no-store' });
+    const data = await res.json();
+    if (data.error === 'unauthorized') {
+      $('setupText').textContent = 'The access key is missing or wrong. Add key= with the value from the Apps Script to this page’s address.';
+      return;
+    }
+    $('setupText').textContent = 'Pick a room. Bookmark the page that opens, or set it as the kiosk start page.';
+    $('setupList').innerHTML = (data.rooms || []).map((r) => {
+      const p = new URLSearchParams(location.search);
+      p.set('room', r.id);
+      return `<li><a href="?${p.toString()}">${escapeHtml(r.name)}<div class="hint">room=${escapeHtml(r.id)}</div></a></li>`;
+    }).join('');
+  } catch (err) {
+    $('setupText').textContent = 'Can’t reach the schedule service. Check the network connection and the web app URL.';
+  }
+}
+
+/* ---------- Demo data (?demo=1, ?demo=soon, ?demo=free) ---------- */
+
+function demoData() {
+  const MIN = 60000;
+  const now = Date.now();
+  const at = (offset, length, title, organizer, isPrivate) => {
+    const s = Math.round((now + offset * MIN) / (5 * MIN)) * 5 * MIN;
+    return {
+      start: new Date(s).toISOString(),
+      end: new Date(s + length * MIN).toISOString(),
+      allDay: false,
+      isPrivate: !!isPrivate,
+      title: isPrivate ? 'Busy' : title,
+      organizer,
+    };
+  };
+
+  const events = [
+    at(-165, 30, 'Daily standup', 'Jordan Ellis'),
+    at(-105, 45, '', 'Priya Shah', true),
+  ];
+  if (DEMO === 'soon') events.push(at(6, 45, 'Q4 pipeline review', 'Dana Whitfield'));
+  else if (DEMO !== 'free') events.push(at(-25, 60, 'Q4 pipeline review', 'Dana Whitfield'));
+  events.push(at(80, 60, 'Client call: renewal planning', 'Jordan Ellis'));
+  events.push(at(170, 30, '', 'Sam Ortega', true));
+
+  return {
+    room: { id: ROOM_ID || 'conf-room-1', name: ROOM_ID ? ROOM_ID.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Conf Room 1' },
+    timezone: 'America/Chicago',
+    events,
+  };
+}
+
+/* ---------- Start ---------- */
+
+if (!ROOM_ID && !DEMO) {
+  showSetup();
+} else {
+  load();
+  setInterval(load, REFRESH_MS);
+  setInterval(render, TICK_MS);
+}
+</script>
+</body>
+</html>
